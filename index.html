@@ -6,9 +6,10 @@
 <title>HoopsHype Quote Maker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Oswald = closest free match to Gazzetta. To go pixel-faithful, host Gazzetta
-     woff2 and change QUOTE_FONT / VIA_FONT / SUB_FONT constants below. -->
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Saira Condensed = closest free match to Gazzetta (condensed, full weight range).
+     To go pixel-faithful, host Gazzetta woff2 and change the *_FONT constants below.
+     Oswald kept for the editor chrome. -->
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Saira+Condensed:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   :root{
     --hh-red:#e11d26;
@@ -172,9 +173,9 @@
 const W=1080,H=1350;
 const RED='#e11d26', GOLD='#ffc855', WHITE='#ffffff';
 // Swap these three to your hosted Gazzetta faces for a pixel-faithful match.
-const QUOTE_FONT='700 "Oswald"';
-const SUB_FONT='300 "Oswald"';
-const VIA_FONT='600 "Oswald"';
+const QUOTE_FONT='800 "Saira Condensed"';
+const SUB_FONT='500 "Saira Condensed"';
+const VIA_FONT='700 "Saira Condensed"';
 
 // ---- Imagn clean-image proxy ----
 // After you deploy hh-imagn-proxy, paste its URL here (no trailing slash). Leave '' to disable.
@@ -230,74 +231,89 @@ function draw(){
 
   const right = state.pos.endsWith('r');
   const top   = state.pos.startsWith('t');
-  const margin=70;
-  const colW=560;                              // text column width
-  const xAnchor = right ? W-margin : margin;   // alignment edge
+  // geometry pulled from the template PSD (1080x1350): quote box right edge 992,
+  // width ~514, top 137; VIA stack right edge ~1019.
+  const margin=88;
+  const colW=514;
+  const xAnchor   = right ? W-margin : margin;     // quote + subtitle edge
+  const viaAnchor = right ? W-61     : 61;          // VIA edge sits a touch wider
   const align = right ? 'right' : 'left';
+  const frameBottom = H-58;
 
-  // scrim for legibility (darken the text side + that vertical half)
+  // scrim for legibility (stronger on the text side so big white type pops)
   if(state.scrim){
     const g=ctx.createLinearGradient(right?W:0,0,right?0:W,0);
-    g.addColorStop(0,'rgba(0,0,0,0.72)'); g.addColorStop(0.55,'rgba(0,0,0,0)');
+    g.addColorStop(0,'rgba(0,0,0,0.86)'); g.addColorStop(0.46,'rgba(0,0,0,0.12)'); g.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    const gv=ctx.createLinearGradient(0,top?0:H,0,top?H*0.6:H*0.4);
-    gv.addColorStop(0,'rgba(0,0,0,0.45)'); gv.addColorStop(1,'rgba(0,0,0,0)');
+    const gv=ctx.createLinearGradient(0,top?0:H,0,top?H*0.72:H*0.28);
+    gv.addColorStop(0,'rgba(0,0,0,0.5)'); gv.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=gv; ctx.fillRect(0,0,W,H);
   }
 
-  // ---- quote (auto-fit) ----
+  ctx.textBaseline='top';
+
+  // ---- quote (auto-fit big, tight) ----
   const tokens=parseTokens(document.getElementById('quote').value.trim());
-  let size=104, lines, lh;
+  const quoteBudget = state.via ? 0.40*H : 0.60*H;   // template quote runs ~137..604
+  let size=120, lines=[], lh=0;
   if(tokens.length){
-    for(size=110; size>=40; size-=2){
+    for(size=150; size>=58; size-=3){
       ctx.font=`${QUOTE_FONT} ${size}px`;
+      ctx.letterSpacing=`${-Math.round(size*0.02)}px`;   // tighten packing
       lines=wrapTokens(tokens,colW);
-      lh=size*1.0;
-      if(lines.length*lh <= 660) break;
+      lh=size*0.86;                                       // tight leading like the template
+      if(lines.length*lh <= quoteBudget) break;
     }
-  } else { lines=[]; lh=0; }
+  }
+  const quoteH = lines.length*lh;
 
-  // vertical start
-  let qy = top ? 150 : H - margin - estimateBlockHeight(lines,lh,size);
-  ctx.textAlign=align; ctx.textBaseline='top';
-
-  // opening curly quote sits on first line
+  // vertical start: top block hugs the top inset; bottom block sits above the credit
+  const blockTop = 137;
+  let qy = top ? blockTop : (frameBottom - 40 - quoteH - (state.via?260:0));
+  ctx.textAlign=align;
+  ctx.font=`${QUOTE_FONT} ${size}px`; ctx.letterSpacing=`${-Math.round(size*0.02)}px`;
   lines.forEach((ln,i)=>{
-    let prefix = i===0 ? '\u201C' : '';     // “
-    let suffix = i===lines.length-1 ? '\u201D' : ''; // ”
+    const prefix = i===0 ? '\u201C' : '';
+    const suffix = i===lines.length-1 ? '\u201D' : '';
     drawColoredLine(ln, xAnchor, qy+i*lh, size, align, prefix, suffix);
   });
-  let cursorY = qy + lines.length*lh;
+  let cursorY = qy + quoteH;
 
   // ---- subtitle ----
   const subTokens=parseTokens(document.getElementById('sub').value.trim());
   if(subTokens.length){
-    const ss=Math.round(size*0.44);
-    ctx.font=`${SUB_FONT} ${ss}px`;
-    cursorY += 14;
+    const ss=Math.max(38,Math.min(58,Math.round(size*0.42)));
+    ctx.font=`${SUB_FONT} ${ss}px`; ctx.letterSpacing='0px';
+    cursorY += Math.round(size*0.14);
     drawColoredLine(subTokens, xAnchor, cursorY, ss, align, '\u2013 ', '');
-    cursorY += ss*1.1;
+    cursorY += ss*1.15;
   }
 
-  // ---- VIA block ----
+  // ---- VIA block (big, tight stack, fitted to remaining space) ----
   if(state.via){
     const label=document.getElementById('viaLabel').value;
     const name=document.getElementById('viaName').value.trim().toUpperCase();
-    const vy = top ? cursorY+50 : H-300;
-    ctx.fillStyle=WHITE; ctx.textAlign=align;
-    let vs=120; ctx.font=`${VIA_FONT} ${vs}px`;
-    while(ctx.measureText(name).width>colW && vs>50){vs-=4;ctx.font=`${VIA_FONT} ${vs}px`;}
-    let vyy=vy;
-    if(label){ ctx.font=`${VIA_FONT} ${vs}px`; ctx.fillText(label, xAnchor, vyy); vyy+=vs*0.92; }
-    // wrap multi-word source names
-    const words=name.split(' ');
-    let lineBuf=''; const vlines=[];
-    ctx.font=`${VIA_FONT} ${vs}px`;
-    words.forEach(w=>{ const test=lineBuf?lineBuf+' '+w:w;
-      if(ctx.measureText(test).width>colW && lineBuf){vlines.push(lineBuf);lineBuf=w;} else lineBuf=test; });
-    if(lineBuf) vlines.push(lineBuf);
-    vlines.forEach(vl=>{ ctx.fillText(vl,xAnchor,vyy); vyy+=vs*0.92; });
+    const startV = cursorY + Math.round(size*0.28);
+    // pick the largest size whose label + wrapped name lines fit width AND remaining height
+    let vs=124, vlines=[];
+    for(vs=128; vs>=44; vs-=3){
+      ctx.font=`${VIA_FONT} ${vs}px`; ctx.letterSpacing=`${-Math.round(vs*0.015)}px`;
+      vlines=[]; let buf='';
+      name.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
+        if(ctx.measureText(t).width>colW && buf){vlines.push(buf);buf=w;} else buf=t; });
+      if(buf) vlines.push(buf);
+      const totalLines=(label?1:0)+vlines.length;
+      const totalH=totalLines*vs*0.86;
+      const widest=Math.max(label?ctx.measureText(label).width:0, ...vlines.map(l=>ctx.measureText(l).width));
+      if(widest<=colW && startV+totalH<=frameBottom-46) break;
+    }
+    ctx.fillStyle=WHITE; ctx.textAlign=align; ctx.font=`${VIA_FONT} ${vs}px`;
+    ctx.letterSpacing=`${-Math.round(vs*0.015)}px`;
+    let vyy=startV;
+    if(label){ ctx.fillText(label, viaAnchor, vyy); vyy+=vs*0.86; }
+    vlines.forEach(vl=>{ ctx.fillText(vl,viaAnchor,vyy); vyy+=vs*0.86; });
   }
+  ctx.letterSpacing='0px';
 
   // ---- red frame ----
   if(state.frame){
@@ -308,12 +324,12 @@ function draw(){
   // ---- HH logo (top right) ----
   if(state.logo) drawLogo();
 
-  // ---- credit ----
+  // ---- credit (bottom-left, like the template) ----
   const credit=document.getElementById('credit').value.trim();
   if(credit){
-    ctx.font='400 22px Oswald'; ctx.fillStyle='rgba(255,255,255,0.55)';
-    ctx.textAlign='right'; ctx.textBaseline='bottom';
-    ctx.fillText(credit, W-46, H-28);
+    ctx.font='400 22px "Saira Condensed"'; ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.letterSpacing='0px'; ctx.textAlign='left'; ctx.textBaseline='bottom';
+    ctx.fillText(credit, 46, H-30);
   }
   ctx.textBaseline='alphabetic'; ctx.textAlign='left';
 }
