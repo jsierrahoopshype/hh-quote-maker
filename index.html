@@ -181,10 +181,15 @@ const VIA_FONT='700 "Saira Condensed"';
 // After you deploy hh-imagn-proxy, paste its URL here (no trailing slash). Leave '' to disable.
 const IMAGN_PROXY='https://hh-imagn-proxy.thejorgesierra.workers.dev';
 function imagnClean(input){
-  // turn an Imagn download URL or bare photo id into a clean, CORS-safe proxied URL
+  // turn ANY Imagn URL (preview, download, etc.) or a bare photo id into a
+  // clean, CORS-safe proxied URL. We take the LAST long number as the photo id.
   const s=String(input||'');
-  const m = s.match(/imagn\.com\/download\/full\/(\d+)/) || s.match(/^\s*(\d{4,})\s*$/);
-  if(m && IMAGN_PROXY) return IMAGN_PROXY.replace(/\/$/,'')+'/img/'+m[1];
+  if(/imagn\.com/i.test(s)){
+    const ids=s.match(/\d{5,}/g);
+    if(ids && ids.length && IMAGN_PROXY) return IMAGN_PROXY.replace(/\/$/,'')+'/img/'+ids[ids.length-1];
+  }
+  const bare=s.match(/^\s*(\d{4,})\s*$/);
+  if(bare && IMAGN_PROXY) return IMAGN_PROXY.replace(/\/$/,'')+'/img/'+bare[1];
   return s; // non-imagn url, or proxy not configured -> pass through
 }
 
@@ -406,30 +411,36 @@ drop.addEventListener('click',()=>{const i=document.createElement('input');i.typ
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor='';}));
 drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f){const r=new FileReader();r.onload=ev=>loadImg(ev.target.result);r.readAsDataURL(f);}});
 
-/* ---------- picture search (reads images.json) ----------
-   Expected schema (array):
-   [{ "id":"...", "thumb":"https://… (watermarked preview ok)",
-      "full":"https://… (clean licensed url)", "player":"", "team":"",
-      "photographer":"", "date":"YYYY-MM-DD", "caption":"" }]
-   Whichever firehose option we pick (cached archive or live Worker) just produces this file. */
-let ARCHIVE=[];
-fetch('images.json').then(r=>r.ok?r.json():Promise.reject()).then(d=>{
-  ARCHIVE=Array.isArray(d)?d:(d.photos||[]);
-  document.getElementById('archStatus').innerHTML=`Index loaded · <b>${ARCHIVE.length}</b> pictures searchable`;
-  renderResults(ARCHIVE.slice(0,18));
-}).catch(()=>{
-  document.getElementById('archStatus').innerHTML='No <b>images.json</b> yet — upload or paste a URL to start. (Search activates once the index is deployed.)';
-});
-function runSearch(){
-  const q=document.getElementById('q').value.toLowerCase().trim();
-  if(!q){renderResults(ARCHIVE.slice(0,18));return;}
-  const hits=ARCHIVE.filter(p=>[p.player,p.team,p.photographer,p.caption].join(' ').toLowerCase().includes(q));
-  renderResults(hits.slice(0,30));
+/* ---------- picture search (live, via the Worker's /search endpoint) ---------- */
+const archStatus=document.getElementById('archStatus');
+if(IMAGN_PROXY){ archStatus.innerHTML='Live Imagn search ready &mdash; type a player or team and hit Go.'; }
+else { archStatus.innerHTML='Set <b>IMAGN_PROXY</b> to enable search. Upload or paste a URL meanwhile.'; }
+
+async function runSearch(){
+  const q=document.getElementById('q').value.trim();
+  const box=document.getElementById('results');
+  if(!IMAGN_PROXY){ box.innerHTML=''; return; }
+  if(!q){ box.innerHTML=''; archStatus.textContent='Type a query to search Imagn.'; return; }
+  box.innerHTML='';
+  archStatus.textContent='Searching Imagn for "'+q+'"…';
+  try{
+    const r=await fetch(IMAGN_PROXY.replace(/\/$/,'')+'/search?q='+encodeURIComponent(q));
+    const d=await r.json();
+    if(!r.ok || !d.results || !d.results.length){
+      archStatus.innerHTML='No results for "'+q+'". '+(d&&d.hint?d.hint:'');
+      return;
+    }
+    renderResults(d.results);
+    archStatus.innerHTML='Live Imagn search &middot; <b>'+d.results.length+'</b> results';
+  }catch(e){
+    archStatus.textContent='Search failed: '+e.message;
+  }
 }
 function renderResults(list){
   const box=document.getElementById('results'); box.innerHTML='';
   list.forEach(p=>{
-    const im=document.createElement('img'); im.src=p.thumb||p.full; im.title=(p.player||'')+' · '+(p.caption||'');
+    const im=document.createElement('img'); im.src=p.thumb||p.full; im.loading='lazy';
+    im.title=(p.caption||p.id||'');
     im.onclick=()=>{ [...box.children].forEach(x=>x.classList.remove('sel')); im.classList.add('sel');
       loadImg(imagnClean(p.full||p.thumb));
       if(p.photographer) document.getElementById('credit').value=p.photographer; };
