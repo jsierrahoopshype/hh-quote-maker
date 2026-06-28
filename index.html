@@ -319,28 +319,28 @@ function draw(){
   // record quote-block hit box (full column width for an easy grab)
   layout.quote = { x:(right?qx-colW:qx)-8, y:qy-12, w:colW+16, h:(cursorY-qy)+20 };
 
-  // ===== VIA block (its own draggable unit; default size == quote, then VIA slider) =====
+  // ===== VIA block (label + name flow as one unit; its own draggable group) =====
   if(state.via){
     const label=document.getElementById('viaLabel').value;
     const name=document.getElementById('viaName').value.trim().toUpperCase();
-    const wrapName=(fs)=>{ ctx.font=`${VIA_FONT} ${fs}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(fs*0.015)}px`;
-      const out=[]; let buf=''; name.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
+    const full=((label?label+' ':'')+name).trim();
+    const wrapText=(fs)=>{ ctx.font=`${VIA_FONT} ${fs}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(fs*0.015)}px`;
+      const out=[]; let buf=''; full.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
         if(ctx.measureText(t).width>colW && buf){out.push(buf);buf=w;} else buf=t; }); if(buf) out.push(buf); return out; };
     const vx = viaAnchor + off.via.x;
     const vy0 = (top ? cursorY + Math.round(size*0.28) : H-300) + off.via.y;
-    let vs=Math.max(20,Math.round(size*scales.via));   // default == quote size
-    let vlines=wrapName(vs), guard=0;
+    let vs=Math.max(20,Math.round(size*scales.via));
+    let vlines=wrapText(vs), guard=0;
     while(guard++<80){
       ctx.font=`${VIA_FONT} ${vs}px ${FONT_FAMILY}`;
-      const widest=Math.max(label?ctx.measureText(label).width:0, ...vlines.map(l=>ctx.measureText(l).width));
-      const totalH=((label?1:0)+vlines.length)*vs*0.86;
+      const widest=Math.max(0,...vlines.map(l=>ctx.measureText(l).width));
+      const totalH=vlines.length*vs*0.86;
       if((widest<=colW && vy0+totalH<=frameBottom-30) || vs<=22) break;
-      vs-=3; vlines=wrapName(vs);
+      vs-=3; vlines=wrapText(vs);
     }
     ctx.fillStyle=WHITE; ctx.textAlign=align; ctx.font=`${VIA_FONT} ${vs}px ${FONT_FAMILY}`;
     ctx.letterSpacing=`${-Math.round(vs*0.015)}px`;
     let vyy=vy0;
-    if(label){ ctx.fillText(label, vx, vyy); vyy+=vs*0.86; }
     vlines.forEach(vl=>{ ctx.fillText(vl,vx,vyy); vyy+=vs*0.86; });
     layout.via = { x:(right?vx-colW:vx)-8, y:vy0-12, w:colW+16, h:(vyy-vy0)+20 };
   } else { layout.via=null; }
@@ -353,31 +353,41 @@ function draw(){
     logoRect={x:W-26-lw, y:24, w:lw, h:lhh};
   }
 
-  // ---- red frame (breaks behind the corner logo) ----
+  // ---- red frame (rounded corners, breaks behind the corner logo) ----
   if(state.frame){
-    ctx.strokeStyle=RED; ctx.lineWidth=7; ctx.lineJoin='miter';
-    const m=30;
+    ctx.strokeStyle=RED; ctx.lineWidth=7; ctx.lineJoin='round'; ctx.lineCap='round';
+    const m=30, r=26;
     if(logoRect){
       const gapX=logoRect.x-14, gapY=logoRect.y+logoRect.h+14;
+      // top edge + rounded top-left corner, stopping before the logo
       ctx.beginPath();
-      ctx.moveTo(m, m); ctx.lineTo(gapX, m);          // top, stops before logo
-      ctx.moveTo(W-m, gapY); ctx.lineTo(W-m, H-m);    // right, resumes below logo
-      ctx.lineTo(m, H-m);                              // bottom
-      ctx.lineTo(m, m);                                // left, back to start
-      ctx.stroke();
+      ctx.moveTo(m, m+r); ctx.arcTo(m,m, m+r,m, r); ctx.lineTo(gapX, m); ctx.stroke();
+      // right (below logo) -> bottom-right -> bottom -> bottom-left -> left, back up to the top-left arc
+      ctx.beginPath();
+      ctx.moveTo(W-m, gapY);
+      ctx.lineTo(W-m, H-m-r); ctx.arcTo(W-m,H-m, W-m-r,H-m, r);
+      ctx.lineTo(m+r, H-m);   ctx.arcTo(m,H-m, m,H-m-r, r);
+      ctx.lineTo(m, m+r); ctx.stroke();
     } else {
-      roundRect(ctx,30,30,W-60,H-60,6); ctx.stroke();
+      roundRect(ctx,30,30,W-60,H-60,r); ctx.stroke();
     }
+    ctx.lineCap='butt';
   }
-  if(logoRect) ctx.drawImage(hhLogo, logoRect.x, logoRect.y, logoRect.w, logoRect.h);
+  // logo on top, with a soft relief shadow
+  if(logoRect){
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,0.55)'; ctx.shadowBlur=18; ctx.shadowOffsetY=6;
+    ctx.drawImage(hhLogo, logoRect.x, logoRect.y, logoRect.w, logoRect.h);
+    ctx.restore();
+  }
 
-  // ---- credit (bottom-left, small) ----
+  // ---- credit (below the red line, bottom-left) ----
   const credit=document.getElementById('credit').value.trim();
   if(credit){
-    const cs=Math.max(12,Math.round(24*scales.credit));
-    ctx.font=`400 ${cs}px ${FONT_FAMILY}`; ctx.fillStyle='rgba(255,255,255,0.62)';
+    const cs=Math.max(12,Math.round(21*scales.credit));
+    ctx.font=`400 ${cs}px ${FONT_FAMILY}`; ctx.fillStyle='rgba(255,255,255,0.7)';
     ctx.letterSpacing='0px'; ctx.textAlign='left'; ctx.textBaseline='bottom';
-    ctx.fillText(credit, 46, H-30);
+    ctx.fillText(credit, 40, H-10);   // sits in the margin under the frame line
   }
   ctx.textBaseline='alphabetic'; ctx.textAlign='left';
 }
@@ -469,6 +479,15 @@ window.addEventListener('mouseup',endDrag);
 cv.addEventListener('touchstart',startDrag,{passive:false}); cv.addEventListener('touchmove',moveDrag,{passive:false});
 window.addEventListener('touchend',endDrag);
 
+// scroll-wheel over a block to resize just that block
+cv.addEventListener('wheel',e=>{
+  const k=hitBlock(canvasPos(e)); if(!k) return; e.preventDefault();
+  const slider=document.getElementById(k==='quote'?'sQuote':'sVia');
+  let v=scales[k]+(e.deltaY<0?0.05:-0.05);
+  v=Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), +v.toFixed(2)));
+  scales[k]=v; slider.value=v; draw();
+},{passive:false});
+
 document.getElementById('autoGold').addEventListener('click',()=>{
   const q=document.getElementById('quote');
   const words=q.value.replace(/\*/g,'').split(/\s+/);
@@ -490,6 +509,7 @@ if(IMAGN_PROXY){ archStatus.innerHTML='Live Imagn search ready &mdash; type a pl
 else { archStatus.innerHTML='Set <b>IMAGN_PROXY</b> to enable search. Upload or paste a URL meanwhile.'; }
 
 let searchState={q:'', page:0, total:0, loading:false};
+let seenIds=new Set();
 
 async function fetchPage(reset){
   const q=document.getElementById('q').value.trim();
@@ -497,7 +517,7 @@ async function fetchPage(reset){
   if(!IMAGN_PROXY){ box.innerHTML=''; return; }
   if(!q){ box.innerHTML=''; setLoadMore(false); archStatus.textContent='Type a query to search Imagn.'; return; }
   if(searchState.loading) return;
-  if(reset){ searchState={q, page:0, total:0, loading:false}; box.innerHTML=''; }
+  if(reset){ searchState={q, page:0, total:0, loading:false}; box.innerHTML=''; seenIds=new Set(); }
   searchState.loading=true;
   const nextPage=searchState.page+1;
   archStatus.textContent = reset ? 'Searching Imagn for "'+q+'"…' : 'Loading more…';
@@ -508,16 +528,21 @@ async function fetchPage(reset){
       if(reset) archStatus.innerHTML='No results for "'+q+'". '+(d&&d.hint?d.hint:'');
       setLoadMore(false); searchState.loading=false; return;
     }
-    appendResults(d.results);
+    const added=appendResults(d.results);   // returns count of NEW (non-duplicate) photos
     searchState.page=d.page||nextPage; searchState.total=d.total||0; searchState.loading=false;
-    const shown=document.getElementById('results').children.length;
+    const shown=document.getElementById('results').querySelectorAll('img').length;
+    if(added===0 && !reset){
+      archStatus.innerHTML='No more new photos for "'+q+'" ('+shown+' shown).';
+      setLoadMore(false); return;
+    }
     archStatus.innerHTML='Showing <b>'+shown+'</b> of '+(d.total||shown).toLocaleString()+' for "'+q+'"';
     setLoadMore(!!d.hasMore);
   }catch(e){ archStatus.textContent='Search failed: '+e.message; searchState.loading=false; }
 }
 function appendResults(list){
-  const box=document.getElementById('results');
+  const box=document.getElementById('results'); let added=0;
   list.forEach(p=>{
+    if(seenIds.has(p.id)) return; seenIds.add(p.id); added++;
     const im=document.createElement('img'); im.src=p.thumb||p.full; im.loading='lazy';
     im.title=(p.caption||p.id||'');
     im.onclick=()=>{ [...box.querySelectorAll('img')].forEach(x=>x.classList.remove('sel')); im.classList.add('sel');
@@ -527,6 +552,7 @@ function appendResults(list){
     };
     box.appendChild(im);
   });
+  return added;
 }
 function setLoadMore(show){
   let b=document.getElementById('loadMore');
