@@ -147,26 +147,42 @@
 
     <div class="group">
       <h3>5 · Layout</h3>
-      <label class="f">Text position</label>
+      <label class="f">Quick position</label>
       <div class="pos-grid" id="posGrid">
         <button data-pos="tr" class="on">Top right</button>
         <button data-pos="tl">Top left</button>
         <button data-pos="br">Bottom right</button>
         <button data-pos="bl">Bottom left</button>
       </div>
-      <div class="row"><span>HH logo</span><div class="toggle on" id="tLogo"></div></div>
+
+      <label class="f" style="margin-top:14px">Editing element</label>
+      <div class="pos-grid" id="elPick" style="grid-template-columns:repeat(2,1fr)">
+        <button data-el="quote" class="on">Quote</button>
+        <button data-el="via">VIA</button>
+      </div>
+
+      <label class="f">Align <span id="alignFor" style="color:var(--muted)">(quote)</span></label>
+      <div class="pos-grid" id="alignGrid" style="grid-template-columns:repeat(3,1fr)">
+        <button data-al="left">Left</button>
+        <button data-al="center">Center</button>
+        <button data-al="right" class="on">Right</button>
+      </div>
+
+      <label class="f">Width</label>
+      <input type="range" id="sWidth" min="220" max="980" step="10" value="514">
+      <label class="f">Size</label>
+      <input type="range" id="sSize" min="0.4" max="2.4" step="0.05" value="1">
+
+      <div class="row" style="margin-top:8px"><span>HH logo</span><div class="toggle on" id="tLogo"></div></div>
       <div class="row"><span>Red frame</span><div class="toggle on" id="tFrame"></div></div>
-      <div class="row"><span>Dark scrim (legibility)</span><div class="toggle on" id="tScrim"></div></div>
+      <div class="row"><span>Dark scrim</span><div class="toggle on" id="tScrim"></div></div>
       <div class="row"><span>Show VIA block</span><div class="toggle on" id="tVia"></div></div>
 
-      <label class="f" style="margin-top:14px">Quote size</label>
-      <input type="range" id="sQuote" min="0.6" max="1.6" step="0.05" value="1">
-      <label class="f">VIA size</label>
-      <input type="range" id="sVia" min="0.5" max="2" step="0.05" value="1">
-      <label class="f">Credit size</label>
+      <label class="f" style="margin-top:10px">Credit size</label>
       <input type="range" id="sCredit" min="0.5" max="2" step="0.05" value="1">
-      <button class="btn ghost" id="resetPos" style="margin-top:12px;flex:none;padding:8px 12px;font-size:12px">Reset text positions</button>
-      <div class="hint" style="margin-top:8px">Drag the quote or the VIA text directly on the canvas to move it anywhere.</div>
+
+      <button class="btn ghost" id="resetPos" style="margin-top:12px;flex:none;padding:8px 12px;font-size:12px">Reset layout</button>
+      <div class="hint" style="margin-top:8px">Click a block on the canvas to select it. Drag to move, scroll over it to resize. The gold dashed box shows what's selected.</div>
     </div>
 
     <div class="actions">
@@ -216,9 +232,15 @@ let hhLogo=new Image(); let hhReady=false;
 hhLogo.onload=()=>{hhReady=true;draw();};
 hhLogo.src=HH_MARK_SRC;
 let state={pos:'tr', logo:true, frame:true, scrim:true, via:true};
-let off={quote:{x:0,y:0}, via:{x:0,y:0}};   // manual drag offsets
-let layout={quote:null, via:null};          // drawn bboxes for hit-testing
-let scales={quote:1, via:1, credit:1};      // size sliders
+// Each text element is an editable box: position (x,y), width (w), alignment, size scale.
+let elements={
+  quote:{x:478, y:137, w:514, align:'right', scale:1},
+  via:  {x:478, y:760, w:514, align:'right', scale:1, autoY:true},
+};
+let selected='quote';
+let layout={quote:null, via:null};   // drawn bboxes for hit-testing
+let exporting=false;                 // hide selection chrome during PNG export
+let creditScale=1;
 
 /* ---------- helpers ---------- */
 function parseTokens(str){
@@ -253,96 +275,72 @@ function draw(){
          ctx.fillStyle='#3a3a42'; ctx.font='500 34px Oswald'; ctx.textAlign='center';
          ctx.fillText('Pick or upload a picture',W/2,H/2); ctx.textAlign='left'; }
 
-  const right = state.pos.endsWith('r');
-  const top   = state.pos.startsWith('t');
-  // geometry pulled from the template PSD (1080x1350): quote box right edge 992,
-  // width ~514, top 137; VIA stack right edge ~1019.
-  const margin=88;
-  const colW=514;
-  const xAnchor   = right ? W-margin : margin;     // quote + subtitle edge
-  const viaAnchor = right ? W-61     : 61;          // VIA edge sits a touch wider
-  const align = right ? 'right' : 'left';
   const frameBottom = H-58;
+  const Q=elements.quote, V=elements.via;
 
-  // scrim for legibility (stronger on the text side so big white type pops)
+  // scrim: darken the side the quote sits on
   if(state.scrim){
-    const g=ctx.createLinearGradient(right?W:0,0,right?0:W,0);
+    const qRight = (Q.x + Q.w/2) > W/2;
+    const g=ctx.createLinearGradient(qRight?W:0,0,qRight?0:W,0);
     g.addColorStop(0,'rgba(0,0,0,0.86)'); g.addColorStop(0.46,'rgba(0,0,0,0.12)'); g.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    const gv=ctx.createLinearGradient(0,top?0:H,0,top?H*0.72:H*0.28);
-    gv.addColorStop(0,'rgba(0,0,0,0.5)'); gv.addColorStop(1,'rgba(0,0,0,0)');
+    const gv=ctx.createLinearGradient(0,0,0,H*0.5);
+    gv.addColorStop(0,'rgba(0,0,0,0.45)'); gv.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=gv; ctx.fillRect(0,0,W,H);
   }
 
   ctx.textBaseline='top';
 
-  // ===== QUOTE + SUBTITLE block (one draggable unit) =====
+  // ===== QUOTE + SUBTITLE element =====
   const tokens=parseTokens(document.getElementById('quote').value.trim());
-  const quoteBudget = state.via ? 0.42*H : 0.60*H;
   let baseSize=120, lines=[], lh=0;
   if(tokens.length){
-    for(baseSize=150; baseSize>=44; baseSize-=3){
+    for(baseSize=150; baseSize>=40; baseSize-=3){
       ctx.font=`${QUOTE_FONT} ${baseSize}px ${FONT_FAMILY}`;
       ctx.letterSpacing=`${-Math.round(baseSize*0.02)}px`;
-      lines=wrapTokens(tokens,colW);
+      lines=wrapTokens(tokens,Q.w);
       lh=baseSize*0.86;
-      if(lines.length*lh <= quoteBudget) break;
+      if(lines.length*lh <= (state.via?0.52*H:0.74*H)) break;
     }
   }
-  const size=Math.max(20,Math.round(baseSize*scales.quote));   // user scale
-  ctx.font=`${QUOTE_FONT} ${size}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(size*0.02)}px`;
-  lines=tokens.length?wrapTokens(tokens,colW):[];
-  lh=size*0.86;
-  const quoteH=lines.length*lh;
-
-  const blockTop=137;
-  const baseQy = top ? blockTop : (frameBottom-40-quoteH-(state.via?260:0));
-  const qx = xAnchor + off.quote.x;
-  let qy = baseQy + off.quote.y;
-  ctx.textAlign=align;
+  const qsize=Math.max(16,Math.round(baseSize*Q.scale));
+  ctx.font=`${QUOTE_FONT} ${qsize}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(qsize*0.02)}px`;
+  lines=tokens.length?wrapTokens(tokens,Q.w):[];
+  lh=qsize*0.86;
+  let qy=Q.y;
   lines.forEach((ln,i)=>{
     const prefix = i===0 ? '\u201C' : '';
     const suffix = i===lines.length-1 ? '\u201D' : '';
-    drawColoredLine(ln, qx, qy+i*lh, size, align, prefix, suffix);
+    drawAlignedLine(ln, Q, qy+i*lh, prefix, suffix);
   });
-  let cursorY = qy + quoteH;
+  let cursorY = qy + lines.length*lh;
 
-  // subtitle (moves with the quote block)
   const subTokens=parseTokens(document.getElementById('sub').value.trim());
   if(subTokens.length){
-    const ss=Math.max(30,Math.min(58,Math.round(size*0.42)));
+    const ss=Math.max(24,Math.min(60,Math.round(qsize*0.42)));
     ctx.font=`${SUB_FONT} ${ss}px ${FONT_FAMILY}`; ctx.letterSpacing='0px';
-    cursorY += Math.round(size*0.14);
-    drawColoredLine(subTokens, qx, cursorY, ss, align, '\u2013 ', '');
+    cursorY += Math.round(qsize*0.14);
+    drawAlignedLine(subTokens, Q, cursorY, '\u2013 ', '');
     cursorY += ss*1.15;
   }
-  // record quote-block hit box (full column width for an easy grab)
-  layout.quote = { x:(right?qx-colW:qx)-8, y:qy-12, w:colW+16, h:(cursorY-qy)+20 };
+  layout.quote = { x:Q.x-8, y:qy-12, w:Q.w+16, h:(cursorY-qy)+20 };
+  const quoteBottom=cursorY;
 
-  // ===== VIA block (label + name flow as one unit; its own draggable group) =====
+  // ===== VIA element =====
   if(state.via){
+    if(V.autoY) V.y = quoteBottom + Math.round(qsize*0.28);
     const label=document.getElementById('viaLabel').value;
     const name=document.getElementById('viaName').value.trim().toUpperCase();
     const full=((label?label+' ':'')+name).trim();
-    const wrapText=(fs)=>{ ctx.font=`${VIA_FONT} ${fs}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(fs*0.015)}px`;
-      const out=[]; let buf=''; full.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
-        if(ctx.measureText(t).width>colW && buf){out.push(buf);buf=w;} else buf=t; }); if(buf) out.push(buf); return out; };
-    const vx = viaAnchor + off.via.x;
-    const vy0 = (top ? cursorY + Math.round(size*0.28) : H-300) + off.via.y;
-    let vs=Math.max(20,Math.round(size*scales.via));
-    let vlines=wrapText(vs), guard=0;
-    while(guard++<80){
-      ctx.font=`${VIA_FONT} ${vs}px ${FONT_FAMILY}`;
-      const widest=Math.max(0,...vlines.map(l=>ctx.measureText(l).width));
-      const totalH=vlines.length*vs*0.86;
-      if((widest<=colW && vy0+totalH<=frameBottom-30) || vs<=22) break;
-      vs-=3; vlines=wrapText(vs);
-    }
-    ctx.fillStyle=WHITE; ctx.textAlign=align; ctx.font=`${VIA_FONT} ${vs}px ${FONT_FAMILY}`;
-    ctx.letterSpacing=`${-Math.round(vs*0.015)}px`;
-    let vyy=vy0;
-    vlines.forEach(vl=>{ ctx.fillText(vl,vx,vyy); vyy+=vs*0.86; });
-    layout.via = { x:(right?vx-colW:vx)-8, y:vy0-12, w:colW+16, h:(vyy-vy0)+20 };
+    const vsize=Math.max(16,Math.round(qsize*V.scale));
+    ctx.font=`${VIA_FONT} ${vsize}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(vsize*0.015)}px`;
+    const vlines=[]; let buf='';
+    full.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
+      if(ctx.measureText(t).width>V.w && buf){vlines.push(buf);buf=w;} else buf=t; }); if(buf) vlines.push(buf);
+    ctx.fillStyle=WHITE; ctx.textBaseline='top';
+    let vyy=V.y;
+    vlines.forEach(l=>{ ctx.fillText(l, alignX(V, ctx.measureText(l).width), vyy); vyy+=vsize*0.86; });
+    layout.via = { x:V.x-8, y:V.y-12, w:V.w+16, h:(vyy-V.y)+20 };
   } else { layout.via=null; }
   ctx.letterSpacing='0px';
 
@@ -384,12 +382,19 @@ function draw(){
   // ---- credit (below the red line, bottom-left) ----
   const credit=document.getElementById('credit').value.trim();
   if(credit){
-    const cs=Math.max(12,Math.round(21*scales.credit));
+    const cs=Math.max(12,Math.round(21*creditScale));
     ctx.font=`400 ${cs}px ${FONT_FAMILY}`; ctx.fillStyle='rgba(255,255,255,0.7)';
     ctx.letterSpacing='0px'; ctx.textAlign='left'; ctx.textBaseline='bottom';
     ctx.fillText(credit, 40, H-10);   // sits in the margin under the frame line
   }
   ctx.textBaseline='alphabetic'; ctx.textAlign='left';
+
+  // ---- selection outline (editor only, never exported) ----
+  if(!exporting && layout[selected]){
+    const b=layout[selected];
+    ctx.save(); ctx.strokeStyle='rgba(255,200,85,0.95)'; ctx.lineWidth=2; ctx.setLineDash([11,7]);
+    ctx.strokeRect(b.x,b.y,b.w,b.h); ctx.setLineDash([]); ctx.restore();
+  }
 }
 
 function wrapTokens(tokens,maxW){
@@ -406,25 +411,23 @@ function wrapTokens(tokens,maxW){
 function measureTokens(toks){ return ctx.measureText(toks.map(t=>t.t.toUpperCase()).join(' ')).width; }
 function estimateBlockHeight(lines,lh){ return lines.length*lh + 240; }
 
-function drawColoredLine(toks, xAnchor, y, size, align, prefix='', suffix=''){
-  // build the line string with prefix/suffix then draw word by word with colors
+function alignX(el, lineWidth){
+  if(el.align==='left')   return el.x;
+  if(el.align==='center') return el.x + (el.w - lineWidth)/2;
+  return el.x + el.w - lineWidth;          // right
+}
+function drawAlignedLine(toks, el, y, prefix='', suffix=''){
+  // word-by-word so we can color *gold* tokens; aligned within the element box
   const space=ctx.measureText(' ').width;
   const parts=[];
   if(prefix) parts.push({t:prefix,gold:toks[0]?.gold||false,glue:true});
-  toks.forEach((t,i)=>parts.push({t:t.t,gold:t.gold}));
+  toks.forEach(t=>parts.push({t:t.t,gold:t.gold}));
   if(suffix) parts.push({t:suffix,gold:toks[toks.length-1]?.gold||false,glue:true});
-
-  // total width to place right-aligned blocks
   let total=0;
   parts.forEach((p,i)=>{ total+=ctx.measureText(p.t).width; if(i<parts.length-1 && !p.glue) total+=space; });
-  let x = align==='right' ? xAnchor-total : xAnchor;
+  let x=alignX(el,total);
   ctx.textAlign='left';
-  parts.forEach((p,i)=>{
-    ctx.fillStyle=p.gold?GOLD:WHITE;
-    ctx.fillText(p.t,x,y);
-    x+=ctx.measureText(p.t).width + (p.glue?0:space);
-  });
-  ctx.textAlign=align;
+  parts.forEach(p=>{ ctx.fillStyle=p.gold?GOLD:WHITE; ctx.fillText(p.t,x,y); x+=ctx.measureText(p.t).width+(p.glue?0:space); });
 }
 
 function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
@@ -440,27 +443,61 @@ function drawLogo(){
 ['quote','sub','viaLabel','viaName','credit','imgUrl'].forEach(id=>{
   document.getElementById(id).addEventListener('input',()=>{ if(id==='imgUrl'){loadImg(imagnClean(document.getElementById('imgUrl').value));} else draw(); });
 });
+
+// quick-position presets reposition the elements
 document.getElementById('posGrid').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
-  [...e.currentTarget.children].forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); state.pos=b.dataset.pos; draw();
+  [...e.currentTarget.children].forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  const right=b.dataset.pos.endsWith('r'), top=b.dataset.pos.startsWith('t');
+  ['quote','via'].forEach(k=>{ const el=elements[k];
+    el.align = right?'right':'left';
+    el.x = right ? (W-58-el.w) : 58;
+  });
+  elements.quote.y = top ? 137 : 760;
+  elements.via.autoY = true;
+  syncControls(); draw();
 });
+
 function bindToggle(id,key){ const el=document.getElementById(id);
   el.addEventListener('click',()=>{el.classList.toggle('on');state[key]=el.classList.contains('on');draw();}); }
 bindToggle('tLogo','logo'); bindToggle('tFrame','frame'); bindToggle('tScrim','scrim'); bindToggle('tVia','via');
 
-// size sliders
-[['sQuote','quote'],['sVia','via'],['sCredit','credit']].forEach(([id,key])=>{
-  document.getElementById(id).addEventListener('input',e=>{ scales[key]=parseFloat(e.target.value); draw(); });
+// element picker
+function setOn(gridId,attr,val){ [...document.getElementById(gridId).children].forEach(x=>x.classList.toggle('on', x.dataset[attr]===val)); }
+function syncControls(){
+  const el=elements[selected];
+  document.getElementById('alignFor').textContent='('+selected+')';
+  setOn('elPick','el',selected);
+  setOn('alignGrid','al',el.align);
+  document.getElementById('sWidth').value=el.w;
+  document.getElementById('sSize').value=el.scale;
+}
+document.getElementById('elPick').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  selected=b.dataset.el; syncControls(); draw(); });
+document.getElementById('alignGrid').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  elements[selected].align=b.dataset.al; setOn('alignGrid','al',b.dataset.al); draw(); });
+document.getElementById('sWidth').addEventListener('input',e=>{
+  const el=elements[selected], nw=parseInt(e.target.value,10);
+  // keep the alignment edge fixed when resizing width
+  if(el.align==='right') el.x += (el.w-nw);
+  else if(el.align==='center') el.x += (el.w-nw)/2;
+  el.w=nw; draw();
 });
-document.getElementById('resetPos').addEventListener('click',()=>{ off={quote:{x:0,y:0},via:{x:0,y:0}}; draw(); });
+document.getElementById('sSize').addEventListener('input',e=>{ elements[selected].scale=parseFloat(e.target.value); draw(); });
+document.getElementById('sCredit').addEventListener('input',e=>{ creditScale=parseFloat(e.target.value); draw(); });
 
-// drag the quote or VIA block anywhere on the canvas
+document.getElementById('resetPos').addEventListener('click',()=>{
+  elements={ quote:{x:478,y:137,w:514,align:'right',scale:1},
+             via:{x:478,y:760,w:514,align:'right',scale:1,autoY:true} };
+  creditScale=1; document.getElementById('sCredit').value=1;
+  selected='quote'; syncControls(); draw();
+});
+
+// drag to move + click to select
 let drag=null;
 function canvasPos(e){
   const r=cv.getBoundingClientRect();
-  const cx=(e.touches?e.touches[0].clientX:e.clientX);
-  const cy=(e.touches?e.touches[0].clientY:e.clientY);
+  const cx=(e.touches?e.touches[0].clientX:e.clientX), cy=(e.touches?e.touches[0].clientY:e.clientY);
   return { x:(cx-r.left)*(W/r.width), y:(cy-r.top)*(H/r.height) };
 }
 function hitBlock(p){
@@ -468,10 +505,13 @@ function hitBlock(p){
     if(b && p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h) return k; }
   return null;
 }
-function startDrag(e){ const p=canvasPos(e); const k=hitBlock(p); if(k){ drag={k,px:p.x,py:p.y}; cv.style.cursor='grabbing'; e.preventDefault(); } }
+function startDrag(e){ const p=canvasPos(e); const k=hitBlock(p);
+  if(k){ if(k!==selected){ selected=k; syncControls(); } drag={k,px:p.x,py:p.y}; cv.style.cursor='grabbing'; draw(); e.preventDefault(); } }
 function moveDrag(e){
   if(!drag){ cv.style.cursor=hitBlock(canvasPos(e))?'grab':'default'; return; }
-  const p=canvasPos(e); off[drag.k].x+=p.x-drag.px; off[drag.k].y+=p.y-drag.py; drag.px=p.x; drag.py=p.y; draw(); e.preventDefault();
+  const p=canvasPos(e); const el=elements[drag.k];
+  el.x+=p.x-drag.px; el.y+=p.y-drag.py; if(drag.k==='via') el.autoY=false;
+  drag.px=p.x; drag.py=p.y; draw(); e.preventDefault();
 }
 function endDrag(){ if(drag){ drag=null; cv.style.cursor='grab'; } }
 cv.addEventListener('mousedown',startDrag); cv.addEventListener('mousemove',moveDrag);
@@ -479,13 +519,12 @@ window.addEventListener('mouseup',endDrag);
 cv.addEventListener('touchstart',startDrag,{passive:false}); cv.addEventListener('touchmove',moveDrag,{passive:false});
 window.addEventListener('touchend',endDrag);
 
-// scroll-wheel over a block to resize just that block
+// scroll-wheel over a block to resize it
 cv.addEventListener('wheel',e=>{
   const k=hitBlock(canvasPos(e)); if(!k) return; e.preventDefault();
-  const slider=document.getElementById(k==='quote'?'sQuote':'sVia');
-  let v=scales[k]+(e.deltaY<0?0.05:-0.05);
-  v=Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), +v.toFixed(2)));
-  scales[k]=v; slider.value=v; draw();
+  if(k!==selected){ selected=k; syncControls(); }
+  const el=elements[k]; el.scale=Math.max(0.4, Math.min(2.4, +(el.scale+(e.deltaY<0?0.05:-0.05)).toFixed(2)));
+  document.getElementById('sSize').value=el.scale; draw();
 },{passive:false});
 
 document.getElementById('autoGold').addEventListener('click',()=>{
@@ -569,16 +608,20 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')r
 
 /* ---------- export ---------- */
 document.getElementById('dl').addEventListener('click',()=>{
+  exporting=true; draw();
   const a=document.createElement('a'); a.download='hh-quote.png'; a.href=cv.toDataURL('image/png'); a.click();
+  exporting=false; draw();
 });
 document.getElementById('copy').addEventListener('click',async()=>{
-  try{ const blob=await new Promise(r=>cv.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+  try{ exporting=true; draw();
+    const blob=await new Promise(r=>cv.toBlob(r)); exporting=false; draw();
+    await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
     const b=document.getElementById('copy'); b.textContent='Copied'; setTimeout(()=>b.textContent='Copy',1200);
   }catch(e){ alert('Copy not supported here — use Download.'); }
 });
 
 // initial render after fonts load
-document.fonts.ready.then(draw);
+document.fonts.ready.then(()=>{ syncControls(); draw(); });
 loadImg(''); // triggers placeholder
 </script>
 </body>
