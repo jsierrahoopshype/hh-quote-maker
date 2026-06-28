@@ -49,6 +49,7 @@
   .group{border-bottom:1px solid var(--line);padding:16px 18px}
   .group h3{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:12px}
   label.f{display:block;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:10px 0 5px;font-weight:500}
+  input[type=range]{width:100%;accent-color:var(--hh-red);cursor:pointer;margin:2px 0}
   input[type=text],textarea,select{
     width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;
     color:var(--text);padding:9px 11px;font-family:'Oswald',sans-serif;font-size:14px;outline:none;
@@ -157,6 +158,15 @@
       <div class="row"><span>Red frame</span><div class="toggle on" id="tFrame"></div></div>
       <div class="row"><span>Dark scrim (legibility)</span><div class="toggle on" id="tScrim"></div></div>
       <div class="row"><span>Show VIA block</span><div class="toggle on" id="tVia"></div></div>
+
+      <label class="f" style="margin-top:14px">Quote size</label>
+      <input type="range" id="sQuote" min="0.6" max="1.6" step="0.05" value="1">
+      <label class="f">VIA size</label>
+      <input type="range" id="sVia" min="0.5" max="2" step="0.05" value="1">
+      <label class="f">Credit size</label>
+      <input type="range" id="sCredit" min="0.5" max="2" step="0.05" value="1">
+      <button class="btn ghost" id="resetPos" style="margin-top:12px;flex:none;padding:8px 12px;font-size:12px">Reset text positions</button>
+      <div class="hint" style="margin-top:8px">Drag the quote or the VIA text directly on the canvas to move it anywhere.</div>
     </div>
 
     <div class="actions">
@@ -206,6 +216,9 @@ let hhLogo=new Image(); let hhReady=false;
 hhLogo.onload=()=>{hhReady=true;draw();};
 hhLogo.src=HH_MARK_SRC;
 let state={pos:'tr', logo:true, frame:true, scrim:true, via:true};
+let off={quote:{x:0,y:0}, via:{x:0,y:0}};   // manual drag offsets
+let layout={quote:null, via:null};          // drawn bboxes for hit-testing
+let scales={quote:1, via:1, credit:1};      // size sliders
 
 /* ---------- helpers ---------- */
 function parseTokens(str){
@@ -263,82 +276,106 @@ function draw(){
 
   ctx.textBaseline='top';
 
-  // ---- quote (auto-fit big, tight) ----
+  // ===== QUOTE + SUBTITLE block (one draggable unit) =====
   const tokens=parseTokens(document.getElementById('quote').value.trim());
-  const quoteBudget = state.via ? 0.40*H : 0.60*H;   // template quote runs ~137..604
-  let size=120, lines=[], lh=0;
+  const quoteBudget = state.via ? 0.42*H : 0.60*H;
+  let baseSize=120, lines=[], lh=0;
   if(tokens.length){
-    for(size=150; size>=58; size-=3){
-      ctx.font=`${QUOTE_FONT} ${size}px ${FONT_FAMILY}`;
-      ctx.letterSpacing=`${-Math.round(size*0.02)}px`;   // tighten packing
+    for(baseSize=150; baseSize>=44; baseSize-=3){
+      ctx.font=`${QUOTE_FONT} ${baseSize}px ${FONT_FAMILY}`;
+      ctx.letterSpacing=`${-Math.round(baseSize*0.02)}px`;
       lines=wrapTokens(tokens,colW);
-      lh=size*0.86;                                       // tight leading like the template
+      lh=baseSize*0.86;
       if(lines.length*lh <= quoteBudget) break;
     }
   }
-  const quoteH = lines.length*lh;
-
-  // vertical start: top block hugs the top inset; bottom block sits above the credit
-  const blockTop = 137;
-  let qy = top ? blockTop : (frameBottom - 40 - quoteH - (state.via?260:0));
-  ctx.textAlign=align;
+  const size=Math.max(20,Math.round(baseSize*scales.quote));   // user scale
   ctx.font=`${QUOTE_FONT} ${size}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(size*0.02)}px`;
+  lines=tokens.length?wrapTokens(tokens,colW):[];
+  lh=size*0.86;
+  const quoteH=lines.length*lh;
+
+  const blockTop=137;
+  const baseQy = top ? blockTop : (frameBottom-40-quoteH-(state.via?260:0));
+  const qx = xAnchor + off.quote.x;
+  let qy = baseQy + off.quote.y;
+  ctx.textAlign=align;
   lines.forEach((ln,i)=>{
     const prefix = i===0 ? '\u201C' : '';
     const suffix = i===lines.length-1 ? '\u201D' : '';
-    drawColoredLine(ln, xAnchor, qy+i*lh, size, align, prefix, suffix);
+    drawColoredLine(ln, qx, qy+i*lh, size, align, prefix, suffix);
   });
   let cursorY = qy + quoteH;
 
-  // ---- subtitle ----
+  // subtitle (moves with the quote block)
   const subTokens=parseTokens(document.getElementById('sub').value.trim());
   if(subTokens.length){
-    const ss=Math.max(38,Math.min(58,Math.round(size*0.42)));
+    const ss=Math.max(30,Math.min(58,Math.round(size*0.42)));
     ctx.font=`${SUB_FONT} ${ss}px ${FONT_FAMILY}`; ctx.letterSpacing='0px';
     cursorY += Math.round(size*0.14);
-    drawColoredLine(subTokens, xAnchor, cursorY, ss, align, '\u2013 ', '');
+    drawColoredLine(subTokens, qx, cursorY, ss, align, '\u2013 ', '');
     cursorY += ss*1.15;
   }
+  // record quote-block hit box (full column width for an easy grab)
+  layout.quote = { x:(right?qx-colW:qx)-8, y:qy-12, w:colW+16, h:(cursorY-qy)+20 };
 
-  // ---- VIA block (big, tight stack, fitted to remaining space) ----
+  // ===== VIA block (its own draggable unit; default size == quote, then VIA slider) =====
   if(state.via){
     const label=document.getElementById('viaLabel').value;
     const name=document.getElementById('viaName').value.trim().toUpperCase();
-    const startV = cursorY + Math.round(size*0.28);
-    // pick the largest size whose label + wrapped name lines fit width AND remaining height
-    let vs=124, vlines=[];
-    for(vs=128; vs>=44; vs-=3){
-      ctx.font=`${VIA_FONT} ${vs}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(vs*0.015)}px`;
-      vlines=[]; let buf='';
-      name.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
-        if(ctx.measureText(t).width>colW && buf){vlines.push(buf);buf=w;} else buf=t; });
-      if(buf) vlines.push(buf);
-      const totalLines=(label?1:0)+vlines.length;
-      const totalH=totalLines*vs*0.86;
+    const wrapName=(fs)=>{ ctx.font=`${VIA_FONT} ${fs}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(fs*0.015)}px`;
+      const out=[]; let buf=''; name.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
+        if(ctx.measureText(t).width>colW && buf){out.push(buf);buf=w;} else buf=t; }); if(buf) out.push(buf); return out; };
+    const vx = viaAnchor + off.via.x;
+    const vy0 = (top ? cursorY + Math.round(size*0.28) : H-300) + off.via.y;
+    let vs=Math.max(20,Math.round(size*scales.via));   // default == quote size
+    let vlines=wrapName(vs), guard=0;
+    while(guard++<80){
+      ctx.font=`${VIA_FONT} ${vs}px ${FONT_FAMILY}`;
       const widest=Math.max(label?ctx.measureText(label).width:0, ...vlines.map(l=>ctx.measureText(l).width));
-      if(widest<=colW && startV+totalH<=frameBottom-46) break;
+      const totalH=((label?1:0)+vlines.length)*vs*0.86;
+      if((widest<=colW && vy0+totalH<=frameBottom-30) || vs<=22) break;
+      vs-=3; vlines=wrapName(vs);
     }
     ctx.fillStyle=WHITE; ctx.textAlign=align; ctx.font=`${VIA_FONT} ${vs}px ${FONT_FAMILY}`;
     ctx.letterSpacing=`${-Math.round(vs*0.015)}px`;
-    let vyy=startV;
-    if(label){ ctx.fillText(label, viaAnchor, vyy); vyy+=vs*0.86; }
-    vlines.forEach(vl=>{ ctx.fillText(vl,viaAnchor,vyy); vyy+=vs*0.86; });
-  }
+    let vyy=vy0;
+    if(label){ ctx.fillText(label, vx, vyy); vyy+=vs*0.86; }
+    vlines.forEach(vl=>{ ctx.fillText(vl,vx,vyy); vyy+=vs*0.86; });
+    layout.via = { x:(right?vx-colW:vx)-8, y:vy0-12, w:colW+16, h:(vyy-vy0)+20 };
+  } else { layout.via=null; }
   ctx.letterSpacing='0px';
 
-  // ---- red frame ----
-  if(state.frame){
-    ctx.strokeStyle=RED; ctx.lineWidth=7;
-    roundRect(ctx,30,30,W-60,H-60,6); ctx.stroke();
+  // ---- HH logo in the top-right corner ----
+  let logoRect=null;
+  if(state.logo && hhReady){
+    const lw=168, lhh=lw*(hhLogo.height/hhLogo.width);
+    logoRect={x:W-26-lw, y:24, w:lw, h:lhh};
   }
 
-  // ---- HH logo (top right) ----
-  if(state.logo) drawLogo();
+  // ---- red frame (breaks behind the corner logo) ----
+  if(state.frame){
+    ctx.strokeStyle=RED; ctx.lineWidth=7; ctx.lineJoin='miter';
+    const m=30;
+    if(logoRect){
+      const gapX=logoRect.x-14, gapY=logoRect.y+logoRect.h+14;
+      ctx.beginPath();
+      ctx.moveTo(m, m); ctx.lineTo(gapX, m);          // top, stops before logo
+      ctx.moveTo(W-m, gapY); ctx.lineTo(W-m, H-m);    // right, resumes below logo
+      ctx.lineTo(m, H-m);                              // bottom
+      ctx.lineTo(m, m);                                // left, back to start
+      ctx.stroke();
+    } else {
+      roundRect(ctx,30,30,W-60,H-60,6); ctx.stroke();
+    }
+  }
+  if(logoRect) ctx.drawImage(hhLogo, logoRect.x, logoRect.y, logoRect.w, logoRect.h);
 
-  // ---- credit (bottom-left, like the template) ----
+  // ---- credit (bottom-left, small) ----
   const credit=document.getElementById('credit').value.trim();
   if(credit){
-    ctx.font='400 90% 22px "Anek Latin","Oswald",sans-serif'; ctx.fillStyle='rgba(255,255,255,0.6)';
+    const cs=Math.max(12,Math.round(24*scales.credit));
+    ctx.font=`400 ${cs}px ${FONT_FAMILY}`; ctx.fillStyle='rgba(255,255,255,0.62)';
     ctx.letterSpacing='0px'; ctx.textAlign='left'; ctx.textBaseline='bottom';
     ctx.fillText(credit, 46, H-30);
   }
@@ -402,6 +439,36 @@ function bindToggle(id,key){ const el=document.getElementById(id);
   el.addEventListener('click',()=>{el.classList.toggle('on');state[key]=el.classList.contains('on');draw();}); }
 bindToggle('tLogo','logo'); bindToggle('tFrame','frame'); bindToggle('tScrim','scrim'); bindToggle('tVia','via');
 
+// size sliders
+[['sQuote','quote'],['sVia','via'],['sCredit','credit']].forEach(([id,key])=>{
+  document.getElementById(id).addEventListener('input',e=>{ scales[key]=parseFloat(e.target.value); draw(); });
+});
+document.getElementById('resetPos').addEventListener('click',()=>{ off={quote:{x:0,y:0},via:{x:0,y:0}}; draw(); });
+
+// drag the quote or VIA block anywhere on the canvas
+let drag=null;
+function canvasPos(e){
+  const r=cv.getBoundingClientRect();
+  const cx=(e.touches?e.touches[0].clientX:e.clientX);
+  const cy=(e.touches?e.touches[0].clientY:e.clientY);
+  return { x:(cx-r.left)*(W/r.width), y:(cy-r.top)*(H/r.height) };
+}
+function hitBlock(p){
+  for(const k of ['via','quote']){ const b=layout[k];
+    if(b && p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h) return k; }
+  return null;
+}
+function startDrag(e){ const p=canvasPos(e); const k=hitBlock(p); if(k){ drag={k,px:p.x,py:p.y}; cv.style.cursor='grabbing'; e.preventDefault(); } }
+function moveDrag(e){
+  if(!drag){ cv.style.cursor=hitBlock(canvasPos(e))?'grab':'default'; return; }
+  const p=canvasPos(e); off[drag.k].x+=p.x-drag.px; off[drag.k].y+=p.y-drag.py; drag.px=p.x; drag.py=p.y; draw(); e.preventDefault();
+}
+function endDrag(){ if(drag){ drag=null; cv.style.cursor='grab'; } }
+cv.addEventListener('mousedown',startDrag); cv.addEventListener('mousemove',moveDrag);
+window.addEventListener('mouseup',endDrag);
+cv.addEventListener('touchstart',startDrag,{passive:false}); cv.addEventListener('touchmove',moveDrag,{passive:false});
+window.addEventListener('touchend',endDrag);
+
 document.getElementById('autoGold').addEventListener('click',()=>{
   const q=document.getElementById('quote');
   const words=q.value.replace(/\*/g,'').split(/\s+/);
@@ -422,37 +489,55 @@ const archStatus=document.getElementById('archStatus');
 if(IMAGN_PROXY){ archStatus.innerHTML='Live Imagn search ready &mdash; type a player or team and hit Go.'; }
 else { archStatus.innerHTML='Set <b>IMAGN_PROXY</b> to enable search. Upload or paste a URL meanwhile.'; }
 
-async function runSearch(){
+let searchState={q:'', page:0, total:0, loading:false};
+
+async function fetchPage(reset){
   const q=document.getElementById('q').value.trim();
   const box=document.getElementById('results');
   if(!IMAGN_PROXY){ box.innerHTML=''; return; }
-  if(!q){ box.innerHTML=''; archStatus.textContent='Type a query to search Imagn.'; return; }
-  box.innerHTML='';
-  archStatus.textContent='Searching Imagn for "'+q+'"…';
+  if(!q){ box.innerHTML=''; setLoadMore(false); archStatus.textContent='Type a query to search Imagn.'; return; }
+  if(searchState.loading) return;
+  if(reset){ searchState={q, page:0, total:0, loading:false}; box.innerHTML=''; }
+  searchState.loading=true;
+  const nextPage=searchState.page+1;
+  archStatus.textContent = reset ? 'Searching Imagn for "'+q+'"…' : 'Loading more…';
   try{
-    const r=await fetch(IMAGN_PROXY.replace(/\/$/,'')+'/search?q='+encodeURIComponent(q));
+    const r=await fetch(IMAGN_PROXY.replace(/\/$/,'')+'/search?q='+encodeURIComponent(q)+'&page='+nextPage);
     const d=await r.json();
     if(!r.ok || !d.results || !d.results.length){
-      archStatus.innerHTML='No results for "'+q+'". '+(d&&d.hint?d.hint:'');
-      return;
+      if(reset) archStatus.innerHTML='No results for "'+q+'". '+(d&&d.hint?d.hint:'');
+      setLoadMore(false); searchState.loading=false; return;
     }
-    renderResults(d.results);
-    archStatus.innerHTML='Live Imagn search &middot; <b>'+d.results.length+'</b> results';
-  }catch(e){
-    archStatus.textContent='Search failed: '+e.message;
-  }
+    appendResults(d.results);
+    searchState.page=d.page||nextPage; searchState.total=d.total||0; searchState.loading=false;
+    const shown=document.getElementById('results').children.length;
+    archStatus.innerHTML='Showing <b>'+shown+'</b> of '+(d.total||shown).toLocaleString()+' for "'+q+'"';
+    setLoadMore(!!d.hasMore);
+  }catch(e){ archStatus.textContent='Search failed: '+e.message; searchState.loading=false; }
 }
-function renderResults(list){
-  const box=document.getElementById('results'); box.innerHTML='';
+function appendResults(list){
+  const box=document.getElementById('results');
   list.forEach(p=>{
     const im=document.createElement('img'); im.src=p.thumb||p.full; im.loading='lazy';
     im.title=(p.caption||p.id||'');
-    im.onclick=()=>{ [...box.children].forEach(x=>x.classList.remove('sel')); im.classList.add('sel');
+    im.onclick=()=>{ [...box.querySelectorAll('img')].forEach(x=>x.classList.remove('sel')); im.classList.add('sel');
       loadImg(imagnClean(p.full||p.thumb));
-      if(p.photographer) document.getElementById('credit').value=p.photographer; };
+      if(p.photographer) { document.getElementById('credit').value=p.photographer; }
+      draw();
+    };
     box.appendChild(im);
   });
 }
+function setLoadMore(show){
+  let b=document.getElementById('loadMore');
+  if(!b){ b=document.createElement('button'); b.id='loadMore'; b.textContent='Load more';
+    b.style.cssText='width:100%;margin-top:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px;font-family:Oswald;cursor:pointer';
+    b.onclick=()=>fetchPage(false);
+    document.getElementById('results').after(b);
+  }
+  b.style.display=show?'block':'none';
+}
+const runSearch=()=>fetchPage(true);
 document.getElementById('qBtn').addEventListener('click',runSearch);
 document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')runSearch();});
 
