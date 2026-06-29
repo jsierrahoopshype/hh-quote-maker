@@ -118,6 +118,9 @@
       <div class="results" id="results"></div>
       <div class="drop" id="drop">Drop / click to upload a clean image, or paste an image URL below</div>
       <input id="imgUrl" type="text" placeholder="https://…  (paste Imagn licensed image URL)" style="margin-top:8px">
+      <label class="f" style="margin-top:10px">Photo zoom</label>
+      <input type="range" id="sZoom" min="1" max="4" step="0.02" value="1">
+      <div class="hint">Drag the photo (off the text) to pan it, or scroll over the photo to zoom.</div>
     </div>
 
     <div class="group">
@@ -254,14 +257,15 @@ function parseTokens(str){
   });
   return out;
 }
+let imgT={zoom:1, x:0, y:0};   // photo zoom + pan
 function coverDraw(im){
-  const s=Math.max(W/im.width,H/im.height);
+  const s=Math.max(W/im.width,H/im.height)*imgT.zoom;
   const w=im.width*s, h=im.height*s;
-  ctx.drawImage(im,(W-w)/2,(H-h)/2,w,h);
+  ctx.drawImage(im,(W-w)/2+imgT.x,(H-h)/2+imgT.y,w,h);
 }
 function loadImg(src){
   const im=new Image(); im.crossOrigin='anonymous';
-  im.onload=()=>{img=im;draw();};
+  im.onload=()=>{ img=im; imgT={zoom:1,x:0,y:0}; const z=document.getElementById('sZoom'); if(z) z.value=1; draw(); };
   im.onerror=()=>{img=null;draw();};
   im.src=src;
 }
@@ -490,6 +494,7 @@ document.getElementById('resetPos').addEventListener('click',()=>{
   elements={ quote:{x:478,y:137,w:514,align:'right',scale:1},
              via:{x:478,y:760,w:514,align:'right',scale:1,autoY:true} };
   creditScale=1; document.getElementById('sCredit').value=1;
+  imgT={zoom:1,x:0,y:0}; document.getElementById('sZoom').value=1;
   selected='quote'; syncControls(); draw();
 });
 
@@ -506,11 +511,13 @@ function hitBlock(p){
   return null;
 }
 function startDrag(e){ const p=canvasPos(e); const k=hitBlock(p);
-  if(k){ if(k!==selected){ selected=k; syncControls(); } drag={k,px:p.x,py:p.y}; cv.style.cursor='grabbing'; draw(); e.preventDefault(); } }
+  if(k){ if(k!==selected){ selected=k; syncControls(); } drag={k,px:p.x,py:p.y}; cv.style.cursor='grabbing'; draw(); e.preventDefault(); }
+  else if(img){ drag={k:'__img',px:p.x,py:p.y}; cv.style.cursor='grabbing'; e.preventDefault(); } }
 function moveDrag(e){
-  if(!drag){ cv.style.cursor=hitBlock(canvasPos(e))?'grab':'default'; return; }
-  const p=canvasPos(e); const el=elements[drag.k];
-  el.x+=p.x-drag.px; el.y+=p.y-drag.py; if(drag.k==='via') el.autoY=false;
+  if(!drag){ cv.style.cursor=hitBlock(canvasPos(e))?'grab':(img?'move':'default'); return; }
+  const p=canvasPos(e);
+  if(drag.k==='__img'){ imgT.x+=p.x-drag.px; imgT.y+=p.y-drag.py; }
+  else { const el=elements[drag.k]; el.x+=p.x-drag.px; el.y+=p.y-drag.py; if(drag.k==='via') el.autoY=false; }
   drag.px=p.x; drag.py=p.y; draw(); e.preventDefault();
 }
 function endDrag(){ if(drag){ drag=null; cv.style.cursor='grab'; } }
@@ -519,13 +526,20 @@ window.addEventListener('mouseup',endDrag);
 cv.addEventListener('touchstart',startDrag,{passive:false}); cv.addEventListener('touchmove',moveDrag,{passive:false});
 window.addEventListener('touchend',endDrag);
 
-// scroll-wheel over a block to resize it
+// scroll-wheel: over a text block resizes it; over the photo zooms the photo
 cv.addEventListener('wheel',e=>{
-  const k=hitBlock(canvasPos(e)); if(!k) return; e.preventDefault();
-  if(k!==selected){ selected=k; syncControls(); }
-  const el=elements[k]; el.scale=Math.max(0.4, Math.min(2.4, +(el.scale+(e.deltaY<0?0.05:-0.05)).toFixed(2)));
-  document.getElementById('sSize').value=el.scale; draw();
+  const k=hitBlock(canvasPos(e)); e.preventDefault();
+  if(k){
+    if(k!==selected){ selected=k; syncControls(); }
+    const el=elements[k]; el.scale=Math.max(0.4, Math.min(2.4, +(el.scale+(e.deltaY<0?0.05:-0.05)).toFixed(2)));
+    document.getElementById('sSize').value=el.scale; draw();
+  } else if(img){
+    imgT.zoom=Math.max(1, Math.min(4, +(imgT.zoom+(e.deltaY<0?0.06:-0.06)).toFixed(2)));
+    document.getElementById('sZoom').value=imgT.zoom; draw();
+  }
 },{passive:false});
+
+document.getElementById('sZoom').addEventListener('input',e=>{ imgT.zoom=parseFloat(e.target.value); draw(); });
 
 document.getElementById('autoGold').addEventListener('click',()=>{
   const q=document.getElementById('quote');
