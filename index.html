@@ -159,8 +159,9 @@
       </div>
 
       <label class="f" style="margin-top:14px">Editing element</label>
-      <div class="pos-grid" id="elPick" style="grid-template-columns:repeat(2,1fr)">
+      <div class="pos-grid" id="elPick" style="grid-template-columns:repeat(3,1fr)">
         <button data-el="quote" class="on">Quote</button>
+        <button data-el="author">Author</button>
         <button data-el="via">VIA</button>
       </div>
 
@@ -174,7 +175,7 @@
       <label class="f">Width</label>
       <input type="range" id="sWidth" min="220" max="980" step="10" value="514">
       <label class="f">Size</label>
-      <input type="range" id="sSize" min="0.4" max="2.4" step="0.05" value="1">
+      <input type="range" id="sSize" min="0.2" max="2.4" step="0.05" value="0.6">
 
       <div class="row" style="margin-top:8px"><span>HH logo</span><div class="toggle on" id="tLogo"></div></div>
       <div class="row"><span>Red frame</span><div class="toggle on" id="tFrame"></div></div>
@@ -237,11 +238,12 @@ hhLogo.src=HH_MARK_SRC;
 let state={pos:'tr', logo:true, frame:true, scrim:true, via:true};
 // Each text element is an editable box: position (x,y), width (w), alignment, size scale.
 let elements={
-  quote:{x:478, y:137, w:514, align:'right', scale:1},
-  via:  {x:478, y:760, w:514, align:'right', scale:1, autoY:true},
+  quote: {x:137, y:775, w:885, align:'right', scale:0.6},
+  author:{x:137, y:0,   w:885, align:'right', scale:0.27, autoY:true},
+  via:   {x:137, y:0,   w:885, align:'right', scale:0.33, autoY:true},
 };
 let selected='quote';
-let layout={quote:null, via:null};   // drawn bboxes for hit-testing
+let layout={quote:null, author:null, via:null};   // drawn bboxes for hit-testing
 let exporting=false;                 // hide selection chrome during PNG export
 let creditScale=1;
 
@@ -280,7 +282,7 @@ function draw(){
          ctx.fillText('Pick or upload a picture',W/2,H/2); ctx.textAlign='left'; }
 
   const frameBottom = H-58;
-  const Q=elements.quote, V=elements.via;
+  const Q=elements.quote, A=elements.author, V=elements.via;
 
   // scrim: darken the side the quote sits on
   if(state.scrim){
@@ -295,7 +297,7 @@ function draw(){
 
   ctx.textBaseline='top';
 
-  // ===== QUOTE + SUBTITLE element =====
+  // shared base size from the quote auto-fit (each element scales off this)
   const tokens=parseTokens(document.getElementById('quote').value.trim());
   let baseSize=120, lines=[], lh=0;
   if(tokens.length){
@@ -304,9 +306,11 @@ function draw(){
       ctx.letterSpacing=`${-Math.round(baseSize*0.02)}px`;
       lines=wrapTokens(tokens,Q.w);
       lh=baseSize*0.86;
-      if(lines.length*lh <= (state.via?0.52*H:0.74*H)) break;
+      if(lines.length*lh <= 0.62*H) break;
     }
   }
+
+  // ===== QUOTE element =====
   const qsize=Math.max(16,Math.round(baseSize*Q.scale));
   ctx.font=`${QUOTE_FONT} ${qsize}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(qsize*0.02)}px`;
   lines=tokens.length?wrapTokens(tokens,Q.w):[];
@@ -317,26 +321,29 @@ function draw(){
     const suffix = i===lines.length-1 ? '\u201D' : '';
     drawAlignedLine(ln, Q, qy+i*lh, prefix, suffix);
   });
-  let cursorY = qy + lines.length*lh;
+  const quoteBottom = qy + lines.length*lh;
+  layout.quote = { x:Q.x-8, y:qy-12, w:Q.w+16, h:(quoteBottom-qy)+20 };
 
-  const subTokens=parseTokens(document.getElementById('sub').value.trim());
-  if(subTokens.length){
-    const ss=Math.max(24,Math.min(60,Math.round(qsize*0.42)));
-    ctx.font=`${SUB_FONT} ${ss}px ${FONT_FAMILY}`; ctx.letterSpacing='0px';
-    cursorY += Math.round(qsize*0.14);
-    drawAlignedLine(subTokens, Q, cursorY, '\u2013 ', '');
-    cursorY += ss*1.15;
-  }
-  layout.quote = { x:Q.x-8, y:qy-12, w:Q.w+16, h:(cursorY-qy)+20 };
-  const quoteBottom=cursorY;
+  // ===== AUTHOR element (independent position + size) =====
+  const aTokens=parseTokens(document.getElementById('sub').value.trim());
+  if(aTokens.length){
+    if(A.autoY) A.y = quoteBottom + Math.round(qsize*0.16);
+    const asize=Math.max(14,Math.round(baseSize*A.scale));
+    ctx.font=`${SUB_FONT} ${asize}px ${FONT_FAMILY}`; ctx.letterSpacing='0px';
+    const alines=wrapTokens(aTokens, A.w);
+    let ay=A.y;
+    alines.forEach((ln,i)=>{ drawAlignedLine(ln, A, ay, i===0?'\u2013 ':'', ''); ay+=asize*1.06; });
+    layout.author = { x:A.x-8, y:A.y-10, w:A.w+16, h:(ay-A.y)+14 };
+  } else { layout.author=null; }
+  const authorBottom = layout.author ? (A.y + layout.author.h - 14) : quoteBottom;
 
   // ===== VIA element =====
   if(state.via){
-    if(V.autoY) V.y = quoteBottom + Math.round(qsize*0.28);
+    if(V.autoY) V.y = authorBottom + Math.round(qsize*0.14);
     const label=document.getElementById('viaLabel').value;
     const name=document.getElementById('viaName').value.trim().toUpperCase();
     const full=((label?label+' ':'')+name).trim();
-    const vsize=Math.max(16,Math.round(qsize*V.scale));
+    const vsize=Math.max(14,Math.round(baseSize*V.scale));
     ctx.font=`${VIA_FONT} ${vsize}px ${FONT_FAMILY}`; ctx.letterSpacing=`${-Math.round(vsize*0.015)}px`;
     const vlines=[]; let buf='';
     full.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
@@ -453,11 +460,12 @@ document.getElementById('posGrid').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
   [...e.currentTarget.children].forEach(x=>x.classList.remove('on')); b.classList.add('on');
   const right=b.dataset.pos.endsWith('r'), top=b.dataset.pos.startsWith('t');
-  ['quote','via'].forEach(k=>{ const el=elements[k];
+  ['quote','author','via'].forEach(k=>{ const el=elements[k];
     el.align = right?'right':'left';
     el.x = right ? (W-58-el.w) : 58;
   });
-  elements.quote.y = top ? 137 : 760;
+  elements.quote.y = top ? 137 : 775;
+  elements.author.autoY = true;
   elements.via.autoY = true;
   syncControls(); draw();
 });
@@ -491,8 +499,9 @@ document.getElementById('sSize').addEventListener('input',e=>{ elements[selected
 document.getElementById('sCredit').addEventListener('input',e=>{ creditScale=parseFloat(e.target.value); draw(); });
 
 document.getElementById('resetPos').addEventListener('click',()=>{
-  elements={ quote:{x:478,y:137,w:514,align:'right',scale:1},
-             via:{x:478,y:760,w:514,align:'right',scale:1,autoY:true} };
+  elements={ quote:{x:137,y:775,w:885,align:'right',scale:0.6},
+             author:{x:137,y:0,w:885,align:'right',scale:0.27,autoY:true},
+             via:{x:137,y:0,w:885,align:'right',scale:0.33,autoY:true} };
   creditScale=1; document.getElementById('sCredit').value=1;
   imgT={zoom:1,x:0,y:0}; document.getElementById('sZoom').value=1;
   selected='quote'; syncControls(); draw();
@@ -506,7 +515,7 @@ function canvasPos(e){
   return { x:(cx-r.left)*(W/r.width), y:(cy-r.top)*(H/r.height) };
 }
 function hitBlock(p){
-  for(const k of ['via','quote']){ const b=layout[k];
+  for(const k of ['via','author','quote']){ const b=layout[k];
     if(b && p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h) return k; }
   return null;
 }
@@ -517,7 +526,7 @@ function moveDrag(e){
   if(!drag){ cv.style.cursor=hitBlock(canvasPos(e))?'grab':(img?'move':'default'); return; }
   const p=canvasPos(e);
   if(drag.k==='__img'){ imgT.x+=p.x-drag.px; imgT.y+=p.y-drag.py; }
-  else { const el=elements[drag.k]; el.x+=p.x-drag.px; el.y+=p.y-drag.py; if(drag.k==='via') el.autoY=false; }
+  else { const el=elements[drag.k]; el.x+=p.x-drag.px; el.y+=p.y-drag.py; if(el.autoY!==undefined) el.autoY=false; }
   drag.px=p.x; drag.py=p.y; draw(); e.preventDefault();
 }
 function endDrag(){ if(drag){ drag=null; cv.style.cursor='grab'; } }
@@ -531,7 +540,7 @@ cv.addEventListener('wheel',e=>{
   const k=hitBlock(canvasPos(e)); e.preventDefault();
   if(k){
     if(k!==selected){ selected=k; syncControls(); }
-    const el=elements[k]; el.scale=Math.max(0.4, Math.min(2.4, +(el.scale+(e.deltaY<0?0.05:-0.05)).toFixed(2)));
+    const el=elements[k]; el.scale=Math.max(0.2, Math.min(2.4, +(el.scale+(e.deltaY<0?0.05:-0.05)).toFixed(2)));
     document.getElementById('sSize').value=el.scale; draw();
   } else if(img){
     imgT.zoom=Math.max(1, Math.min(4, +(imgT.zoom+(e.deltaY<0?0.06:-0.06)).toFixed(2)));
