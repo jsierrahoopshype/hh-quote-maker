@@ -284,14 +284,15 @@ function draw(){
   const frameBottom = H-58;
   const Q=elements.quote, A=elements.author, V=elements.via;
 
-  // scrim: darken the side the quote sits on
+  // scrim: darken the side AND the vertical half the quote actually sits on
   if(state.scrim){
     const qRight = (Q.x + Q.w/2) > W/2;
+    const qBottom = Q.y > H/2;
     const g=ctx.createLinearGradient(qRight?W:0,0,qRight?0:W,0);
     g.addColorStop(0,'rgba(0,0,0,0.86)'); g.addColorStop(0.46,'rgba(0,0,0,0.12)'); g.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    const gv=ctx.createLinearGradient(0,0,0,H*0.5);
-    gv.addColorStop(0,'rgba(0,0,0,0.45)'); gv.addColorStop(1,'rgba(0,0,0,0)');
+    const gv=ctx.createLinearGradient(0, qBottom?H:0, 0, qBottom?H*0.42:H*0.58);
+    gv.addColorStop(0,'rgba(0,0,0,0.62)'); gv.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=gv; ctx.fillRect(0,0,W,H);
   }
 
@@ -349,8 +350,10 @@ function draw(){
     full.split(' ').forEach(w=>{ const t=buf?buf+' '+w:w;
       if(ctx.measureText(t).width>V.w && buf){vlines.push(buf);buf=w;} else buf=t; }); if(buf) vlines.push(buf);
     ctx.fillStyle=WHITE; ctx.textBaseline='top';
+    ctx.save(); ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=16; ctx.shadowOffsetY=3;
     let vyy=V.y;
     vlines.forEach(l=>{ ctx.fillText(l, alignX(V, ctx.measureText(l).width), vyy); vyy+=vsize*0.86; });
+    ctx.restore();
     layout.via = { x:V.x-8, y:V.y-12, w:V.w+16, h:(vyy-V.y)+20 };
   } else { layout.via=null; }
   ctx.letterSpacing='0px';
@@ -438,7 +441,9 @@ function drawAlignedLine(toks, el, y, prefix='', suffix=''){
   parts.forEach((p,i)=>{ total+=ctx.measureText(p.t).width; if(i<parts.length-1 && !p.glue) total+=space; });
   let x=alignX(el,total);
   ctx.textAlign='left';
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=16; ctx.shadowOffsetY=3;
   parts.forEach(p=>{ ctx.fillStyle=p.gold?GOLD:WHITE; ctx.fillText(p.t,x,y); x+=ctx.measureText(p.t).width+(p.glue?0:space); });
+  ctx.restore();
 }
 
 function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
