@@ -128,6 +128,7 @@
       <textarea id="quote" placeholder="Type the quote…">Going into the summer, we'll see where all the cards end up, but I do think it's a good situation for both sides.</textarea>
       <div class="hint">Wrap words in <b>*asterisks*</b> to make them gold. Tap <b>Auto-gold</b> to alternate automatically.</div>
       <button class="btn ghost" id="autoGold" style="margin-top:8px;flex:none;padding:7px 12px;font-size:12px">Auto-gold every other word</button>
+      <div class="row" style="margin-top:10px"><span>Quote marks</span><div class="toggle on" id="tQuoteMarks"></div></div>
     </div>
 
     <div class="group">
@@ -235,7 +236,7 @@ const HH_MARK_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAXIAAAC4CAYAAAD
 let hhLogo=new Image(); let hhReady=false;
 hhLogo.onload=()=>{hhReady=true;draw();};
 hhLogo.src=HH_MARK_SRC;
-let state={pos:'tr', logo:true, frame:true, scrim:true, via:true};
+let state={pos:'tr', logo:true, frame:true, scrim:true, via:true, quoteMarks:true};
 // Each text element is an editable box: position (x,y), width (w), alignment, size scale.
 let elements={
   quote: {x:137, y:775, w:885, align:'right', scale:0.6},
@@ -318,8 +319,8 @@ function draw(){
   lh=qsize*0.86;
   let qy=Q.y;
   lines.forEach((ln,i)=>{
-    const prefix = i===0 ? '\u201C' : '';
-    const suffix = i===lines.length-1 ? '\u201D' : '';
+    const prefix = (i===0 && state.quoteMarks) ? '\u201C' : '';
+    const suffix = (i===lines.length-1 && state.quoteMarks) ? '\u201D' : '';
     drawAlignedLine(ln, Q, qy+i*lh, prefix, suffix);
   });
   const quoteBottom = qy + lines.length*lh;
@@ -478,6 +479,7 @@ document.getElementById('posGrid').addEventListener('click',e=>{
 function bindToggle(id,key){ const el=document.getElementById(id);
   el.addEventListener('click',()=>{el.classList.toggle('on');state[key]=el.classList.contains('on');draw();}); }
 bindToggle('tLogo','logo'); bindToggle('tFrame','frame'); bindToggle('tScrim','scrim'); bindToggle('tVia','via');
+bindToggle('tQuoteMarks','quoteMarks');
 
 // element picker
 function setOn(gridId,attr,val){ [...document.getElementById(gridId).children].forEach(x=>x.classList.toggle('on', x.dataset[attr]===val)); }
