@@ -134,7 +134,7 @@
     <div class="group">
       <h3>3 · Who said it</h3>
       <label class="f">Subtitle (name in *asterisks* turns gold)</label>
-      <input id="sub" type="text" value="Cavs guard *Keon Ellis* on free agency">
+      <input id="sub" type="text" value="New Pacers guard *Braden Smith*">
     </div>
 
     <div class="group">
@@ -144,9 +144,9 @@
         <option>VIA</option><option>FROM</option><option value="">(none)</option>
       </select>
       <label class="f">Source name</label>
-      <input id="viaName" type="text" value="MICHAEL SCOTTO">
+      <input id="viaName" type="text" value="Sam Yip at HoopsHype">
       <label class="f">Photo credit (bottom corner)</label>
-      <input id="credit" type="text" value="Stephen Lew-Imagn Images">
+      <input id="credit" type="text" value="Alex Martin/Journal and Courier-USA TODAY NETWORK via Imagn Images">
     </div>
 
     <div class="group">
@@ -239,7 +239,7 @@ hhLogo.src=HH_MARK_SRC;
 let state={pos:'tr', logo:true, frame:true, scrim:true, via:true, quoteMarks:true};
 // Each text element is an editable box: position (x,y), width (w), alignment, size scale.
 let elements={
-  quote: {x:137, y:775, w:885, align:'right', scale:0.6},
+  quote: {x:137, y:137, w:885, align:'right', scale:0.6},
   author:{x:137, y:0,   w:885, align:'right', scale:0.27, autoY:true},
   via:   {x:137, y:0,   w:885, align:'right', scale:0.33, autoY:true},
 };
@@ -506,7 +506,7 @@ document.getElementById('sSize').addEventListener('input',e=>{ elements[selected
 document.getElementById('sCredit').addEventListener('input',e=>{ creditScale=parseFloat(e.target.value); draw(); });
 
 document.getElementById('resetPos').addEventListener('click',()=>{
-  elements={ quote:{x:137,y:775,w:885,align:'right',scale:0.6},
+  elements={ quote:{x:137,y:137,w:885,align:'right',scale:0.6},
              author:{x:137,y:0,w:885,align:'right',scale:0.27,autoY:true},
              via:{x:137,y:0,w:885,align:'right',scale:0.33,autoY:true} };
   creditScale=1; document.getElementById('sCredit').value=1;
