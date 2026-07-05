@@ -153,9 +153,9 @@
       <h3>5 · Layout</h3>
       <label class="f">Quick position</label>
       <div class="pos-grid" id="posGrid">
-        <button data-pos="tr" class="on">Top right</button>
+        <button data-pos="tr">Top right</button>
         <button data-pos="tl">Top left</button>
-        <button data-pos="br">Bottom right</button>
+        <button data-pos="br" class="on">Bottom right</button>
         <button data-pos="bl">Bottom left</button>
       </div>
 
@@ -239,7 +239,7 @@ hhLogo.src=HH_MARK_SRC;
 let state={pos:'tr', logo:true, frame:true, scrim:true, via:true, quoteMarks:true};
 // Each text element is an editable box: position (x,y), width (w), alignment, size scale.
 let elements={
-  quote: {x:137, y:137, w:885, align:'right', scale:0.6},
+  quote: {x:137, y:775, w:885, align:'right', scale:0.6},
   author:{x:137, y:0,   w:825, align:'right', scale:0.45, autoY:true},
   via:   {x:137, y:0,   w:885, align:'right', scale:0.33, autoY:true},
 };
@@ -506,7 +506,7 @@ document.getElementById('sSize').addEventListener('input',e=>{ elements[selected
 document.getElementById('sCredit').addEventListener('input',e=>{ creditScale=parseFloat(e.target.value); draw(); });
 
 document.getElementById('resetPos').addEventListener('click',()=>{
-  elements={ quote:{x:137,y:137,w:885,align:'right',scale:0.6},
+  elements={ quote:{x:137,y:775,w:885,align:'right',scale:0.6},
              author:{x:137,y:0,w:825,align:'right',scale:0.45,autoY:true},
              via:{x:137,y:0,w:885,align:'right',scale:0.33,autoY:true} };
   creditScale=1.6; document.getElementById('sCredit').value=1.6;
