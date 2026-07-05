@@ -184,7 +184,7 @@
       <div class="row"><span>Show VIA block</span><div class="toggle on" id="tVia"></div></div>
 
       <label class="f" style="margin-top:10px">Credit size</label>
-      <input type="range" id="sCredit" min="0.5" max="2" step="0.05" value="1">
+      <input type="range" id="sCredit" min="0.5" max="2" step="0.05" value="1.6">
 
       <button class="btn ghost" id="resetPos" style="margin-top:12px;flex:none;padding:8px 12px;font-size:12px">Reset layout</button>
       <div class="hint" style="margin-top:8px">Click a block on the canvas to select it. Drag to move, scroll over it to resize. The gold dashed box shows what's selected.</div>
@@ -240,13 +240,13 @@ let state={pos:'tr', logo:true, frame:true, scrim:true, via:true, quoteMarks:tru
 // Each text element is an editable box: position (x,y), width (w), alignment, size scale.
 let elements={
   quote: {x:137, y:137, w:885, align:'right', scale:0.6},
-  author:{x:137, y:0,   w:885, align:'right', scale:0.27, autoY:true},
+  author:{x:137, y:0,   w:825, align:'right', scale:0.45, autoY:true},
   via:   {x:137, y:0,   w:885, align:'right', scale:0.33, autoY:true},
 };
 let selected='quote';
 let layout={quote:null, author:null, via:null};   // drawn bboxes for hit-testing
 let exporting=false;                 // hide selection chrome during PNG export
-let creditScale=1;
+let creditScale=1.6;
 
 /* ---------- helpers ---------- */
 function parseTokens(str){
@@ -507,9 +507,9 @@ document.getElementById('sCredit').addEventListener('input',e=>{ creditScale=par
 
 document.getElementById('resetPos').addEventListener('click',()=>{
   elements={ quote:{x:137,y:137,w:885,align:'right',scale:0.6},
-             author:{x:137,y:0,w:885,align:'right',scale:0.27,autoY:true},
+             author:{x:137,y:0,w:825,align:'right',scale:0.45,autoY:true},
              via:{x:137,y:0,w:885,align:'right',scale:0.33,autoY:true} };
-  creditScale=1; document.getElementById('sCredit').value=1;
+  creditScale=1.6; document.getElementById('sCredit').value=1.6;
   imgT={zoom:1,x:0,y:0}; document.getElementById('sZoom').value=1;
   selected='quote'; syncControls(); draw();
 });
