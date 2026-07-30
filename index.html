@@ -110,17 +110,24 @@
 
     <div class="group">
       <h3>1 · Picture</h3>
-      <div class="search-input">
-        <input id="q" type="text" placeholder="Search player, team, photographer…">
-        <button id="qBtn">Go</button>
-      </div>
-      <div class="archive-status" id="archStatus">Checking image index…</div>
-      <div class="results" id="results"></div>
-      <div class="drop" id="drop">Drop / click to upload a clean image, or paste an image URL below</div>
-      <input id="imgUrl" type="text" placeholder="https://…  (paste Imagn licensed image URL)" style="margin-top:8px">
+      <div class="drop" id="drop" style="margin-top:0;padding:26px 18px;font-size:14px">Drop or click to upload a photo</div>
+      <input id="imgUrl" type="text" placeholder="https://…  (paste an image URL)" style="margin-top:8px">
       <label class="f" style="margin-top:10px">Photo zoom</label>
       <input type="range" id="sZoom" min="1" max="4" step="0.02" value="1">
       <div class="hint">Drag the photo (off the text) to pan it, or scroll over the photo to zoom.</div>
+
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:12px;letter-spacing:.03em;text-transform:uppercase">Search (unavailable)</summary>
+        <div class="hint" style="margin-top:8px">
+          Imagn Images moved to <a href="https://www.reutersconnect.com/all" target="_blank" rel="noopener" style="color:var(--hh-red)">Reuters Connect</a> on July 27 &mdash; in-app search is offline until API access comes through. Download the photo there, then drop or upload it above.
+        </div>
+        <div class="search-input" style="margin-top:10px">
+          <input id="q" type="text" placeholder="Search player, team, photographer…">
+          <button id="qBtn">Go</button>
+        </div>
+        <div class="archive-status" id="archStatus">Search unavailable &mdash; use upload above.</div>
+        <div class="results" id="results"></div>
+      </details>
     </div>
 
     <div class="group">
@@ -574,8 +581,7 @@ drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f){const r=n
 
 /* ---------- picture search (live, via the Worker's /search endpoint) ---------- */
 const archStatus=document.getElementById('archStatus');
-if(IMAGN_PROXY){ archStatus.innerHTML='Live Imagn search ready &mdash; type a player or team and hit Go.'; }
-else { archStatus.innerHTML='Set <b>IMAGN_PROXY</b> to enable search. Upload or paste a URL meanwhile.'; }
+archStatus.innerHTML='Imagn is retired (moved to Reuters Connect). Search unavailable &mdash; use upload above.';
 
 let searchState={q:'', page:0, total:0, loading:false};
 let seenIds=new Set();
