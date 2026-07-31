@@ -579,14 +579,16 @@ drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f){const r=n
 /* ---------- picture search (live, via the Worker's /search endpoint) ---------- */
 const archStatus=document.getElementById('archStatus');
 
-// "Search ↗" copies the query and opens Reuters Connect in a new tab, since
-// in-app search is retired. Then Ctrl+V (paste handler below) brings the photo back in.
-document.getElementById('qBtn').addEventListener('click', async ()=>{
+// "Search ↗" opens Reuters Connect straight to the results page for the query.
+// Then Ctrl+V (paste handler below) brings the picked photo back in.
+document.getElementById('qBtn').addEventListener('click', ()=>{
   const q=document.getElementById('q').value.trim();
-  if(q){ try{ await navigator.clipboard.writeText(q); }catch{} }
-  window.open('https://www.reutersconnect.com/all', '_blank', 'noopener');
+  const target = q
+    ? 'https://www.reutersconnect.com/all?search='+encodeURIComponent('all:'+q)
+    : 'https://www.reutersconnect.com/all';
+  window.open(target, '_blank', 'noopener');
   archStatus.innerHTML = q
-    ? 'Copied "'+q+'" &mdash; paste it into Reuters\' search box on the new tab.'
+    ? 'Opened Reuters Connect results for "'+q+'". Right-click a photo → Copy image, then Ctrl+V here.'
     : 'Opened Reuters Connect in a new tab.';
 });
 document.getElementById('q').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('qBtn').click(); });
