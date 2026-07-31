@@ -110,25 +110,22 @@
 
     <div class="group">
       <h3>1 · Picture</h3>
-      <div class="drop" id="drop" style="margin-top:0;padding:26px 18px;font-size:14px">Drop or click to upload a photo</div>
+      <div class="drop" id="drop" style="margin-top:0;padding:26px 18px;font-size:14px">Drop, click to upload, or paste (Ctrl+V) a photo</div>
       <input id="imgUrl" type="text" placeholder="https://…  (paste an image URL)" style="margin-top:8px">
       <label class="f" style="margin-top:10px">Photo zoom</label>
       <input type="range" id="sZoom" min="1" max="4" step="0.02" value="1">
       <div class="hint">Drag the photo (off the text) to pan it, or scroll over the photo to zoom.</div>
 
-      <details style="margin-top:14px">
-        <summary style="cursor:pointer;color:var(--muted);font-size:12px;letter-spacing:.03em;text-transform:uppercase">Search (unavailable)</summary>
-        <div class="hint" style="margin-top:8px">
-          Imagn Images moved to <a href="https://www.reutersconnect.com/all" target="_blank" rel="noopener" style="color:var(--hh-red)">Reuters Connect</a> on July 27 &mdash; in-app search is offline until API access comes through. Download the photo there, then drop or upload it above.
-        </div>
-        <div class="search-input" style="margin-top:10px">
+      <div style="margin-top:14px">
+        <label class="f">Find a photo on Reuters Connect</label>
+        <div class="search-input">
           <input id="q" type="text" placeholder="Search player, team, photographer…">
-          <button id="qBtn">Go</button>
+          <button id="qBtn">Search ↗</button>
         </div>
-        <div class="archive-status" id="archStatus">Search unavailable &mdash; use upload above.</div>
-        <div class="results" id="results"></div>
-      </details>
+        <div class="hint" id="archStatus" style="margin-top:6px">Opens Reuters Connect in a new tab with your search copied &mdash; paste it into their search box. Then on Reuters: right-click the photo → <b>Copy image</b> → come back here and press <b>Ctrl+V</b> to drop it straight in.</div>
+      </div>
     </div>
+
 
     <div class="group">
       <h3>2 · Quote</h3>
@@ -581,66 +578,37 @@ drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f){const r=n
 
 /* ---------- picture search (live, via the Worker's /search endpoint) ---------- */
 const archStatus=document.getElementById('archStatus');
-archStatus.innerHTML='Imagn is retired (moved to Reuters Connect). Search unavailable &mdash; use upload above.';
 
-let searchState={q:'', page:0, total:0, loading:false};
-let seenIds=new Set();
-
-async function fetchPage(reset){
+// "Search ↗" copies the query and opens Reuters Connect in a new tab, since
+// in-app search is retired. Then Ctrl+V (paste handler below) brings the photo back in.
+document.getElementById('qBtn').addEventListener('click', async ()=>{
   const q=document.getElementById('q').value.trim();
-  const box=document.getElementById('results');
-  if(!IMAGN_PROXY){ box.innerHTML=''; return; }
-  if(!q){ box.innerHTML=''; setLoadMore(false); archStatus.textContent='Type a query to search Imagn.'; return; }
-  if(searchState.loading) return;
-  if(reset){ searchState={q, page:0, total:0, loading:false}; box.innerHTML=''; seenIds=new Set(); }
-  searchState.loading=true;
-  const nextPage=searchState.page+1;
-  archStatus.textContent = reset ? 'Searching Imagn for "'+q+'"…' : 'Loading more…';
-  try{
-    const r=await fetch(IMAGN_PROXY.replace(/\/$/,'')+'/search?q='+encodeURIComponent(q)+'&page='+nextPage);
-    const d=await r.json();
-    if(!r.ok || !d.results || !d.results.length){
-      if(reset) archStatus.innerHTML='No results for "'+q+'". '+(d&&d.hint?d.hint:'');
-      setLoadMore(false); searchState.loading=false; return;
+  if(q){ try{ await navigator.clipboard.writeText(q); }catch{} }
+  window.open('https://www.reutersconnect.com/all', '_blank', 'noopener');
+  archStatus.innerHTML = q
+    ? 'Copied "'+q+'" &mdash; paste it into Reuters\' search box on the new tab.'
+    : 'Opened Reuters Connect in a new tab.';
+});
+document.getElementById('q').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('qBtn').click(); });
+
+// Paste anywhere in the tool: an image on the clipboard (from "Copy image" on
+// Reuters) loads straight in; a copied image URL fills the URL box and loads too.
+window.addEventListener('paste', (e)=>{
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  for(const item of items){
+    if(item.type && item.type.startsWith('image/')){
+      const file = item.getAsFile();
+      if(file){ const r=new FileReader(); r.onload=ev=>loadImg(ev.target.result); r.readAsDataURL(file);
+        archStatus.innerHTML='Pasted image loaded.'; e.preventDefault(); return; }
     }
-    const added=appendResults(d.results);   // returns count of NEW (non-duplicate) photos
-    searchState.page=d.page||nextPage; searchState.total=d.total||0; searchState.loading=false;
-    const shown=document.getElementById('results').querySelectorAll('img').length;
-    if(added===0 && !reset){
-      archStatus.innerHTML='No more new photos for "'+q+'" ('+shown+' shown).';
-      setLoadMore(false); return;
-    }
-    archStatus.innerHTML='Showing <b>'+shown+'</b> of '+(d.total||shown).toLocaleString()+' for "'+q+'"';
-    setLoadMore(!!d.hasMore);
-  }catch(e){ archStatus.textContent='Search failed: '+e.message; searchState.loading=false; }
-}
-function appendResults(list){
-  const box=document.getElementById('results'); let added=0;
-  list.forEach(p=>{
-    if(seenIds.has(p.id)) return; seenIds.add(p.id); added++;
-    const im=document.createElement('img'); im.src=p.thumb||p.full; im.loading='lazy';
-    im.title=(p.caption||p.id||'');
-    im.onclick=()=>{ [...box.querySelectorAll('img')].forEach(x=>x.classList.remove('sel')); im.classList.add('sel');
-      loadImg(imagnClean(p.full||p.thumb));
-      if(p.photographer) { document.getElementById('credit').value=p.photographer; }
-      draw();
-    };
-    box.appendChild(im);
-  });
-  return added;
-}
-function setLoadMore(show){
-  let b=document.getElementById('loadMore');
-  if(!b){ b=document.createElement('button'); b.id='loadMore'; b.textContent='Load more';
-    b.style.cssText='width:100%;margin-top:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px;font-family:Oswald;cursor:pointer';
-    b.onclick=()=>fetchPage(false);
-    document.getElementById('results').after(b);
   }
-  b.style.display=show?'block':'none';
-}
-const runSearch=()=>fetchPage(true);
-document.getElementById('qBtn').addEventListener('click',runSearch);
-document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')runSearch();});
+  const text = (e.clipboardData && e.clipboardData.getData('text')) || '';
+  if(/^https?:\/\//i.test(text.trim()) && document.activeElement !== document.getElementById('imgUrl')){
+    document.getElementById('imgUrl').value = text.trim();
+    loadImg(imagnClean(text.trim()));
+    archStatus.innerHTML='Pasted URL loaded.';
+  }
+});
 
 /* ---------- export ---------- */
 document.getElementById('dl').addEventListener('click',()=>{
